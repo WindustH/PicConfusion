@@ -5,25 +5,33 @@ project(PicConfusion)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(OpenCV_DIR "H:/Environment/opencv/sources/build")
-include_directories("${CMAKE_SOURCE_DIR}/include")
+# set(FREEIMAGE_ROOT "H:/Environment/FreeImage")
+# set(FREEIMAGE_INCLUDE_DIR "${FREEIMAGE_ROOT}/Source")
+# set(FREEIMAGE_LIBRARY_DIR "${FREEIMAGE_ROOT}/Dist/x64")
 
-# 查找OpenCV包
-find_package(OpenCV REQUIRED)
-
-# 包含OpenCV头文件目录
-include_directories(${OpenCV_INCLUDE_DIRS})
-
-
-add_executable(PicConfusion
+add_executable(${PROJECT_NAME}
     src/main.cpp 
     src/codec.cpp
-    )
+)
 
-target_link_libraries(PicConfusion ${OpenCV_LIBS})
+find_package(OpenCV REQUIRED)
 find_package(OpenSSL REQUIRED)
+# find_library(FREEIMAGE_LIBRARY
+#     NAMES FreeImage freeimage
+#     PATHS ${FREEIMAGE_LIBRARY_DIR}
+#     REQUIRED
+# )
 
-# 包含头文件路径
-include_directories(${OPENSSL_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE 
+"${CMAKE_SOURCE_DIR}/include"
+    ${OpenCV_INCLUDE_DIRS}
+    ${OPENSSL_INCLUDE_DIR}
+    # ${FREEIMAGE_INCLUDE_DIR}
 
-# 链接OpenSSL库
-target_link_libraries(PicConfusion ${OPENSSL_LIBRARIES})
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+    ${OpenCV_LIBS}
+    # ${FREEIMAGE_LIBRARY}
+    ${OPENSSL_LIBRARIES}
+)
