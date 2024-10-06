@@ -1,5 +1,11 @@
 # PicConfusion Codec by Windust
+
 贴吧图片混淆吧的混淆算法C++实现
+
+## 关于错误的 PNG 文件的处理
+从以往的各种图片混淆网站保存的 PNG，文件尾普遍丢失两个字节，该程序补齐最后四个字节为 AE 42 60 82
+
+# 文档
 
 ## Usage
 
@@ -39,3 +45,4 @@ picconfusion -i input.png -o output.png -d -t 0 -bx 50 -by 50 -k 0.666
 3. The key (`-k`) is a string that may require a specific format depending on the encryption/decryption type.
 4. The input image (`-i`) must be a valid image file path.
 5. The output image (`-o`) can be any path where you want to save the encrypted/decrypted result.
+
