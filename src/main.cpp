@@ -13,7 +13,7 @@ const int TYPE_PERC = 4; // PicEncrypt 行+列混淆
 const std::string HELP_INFO=
 R"(
 PicConfusion Codec by Windust
-Usage: main [options]...
+Usage: picconfusion [options]...
 
 Options:
   -h, --help            Display help information and exit
@@ -38,10 +38,10 @@ Options:
 
 Examples:
   Encrypt image:
-    picencrypt -i input.png -o output.png -e -t 0 -bx 50 -by 50 -k 0.666
+    picconfusion -i input.png -o output.png -e -t 0 -bx 50 -by 50 -k 0.666
 
   Decrypt image:
-    picencrypt -i input.png -o output.png -d -t 0 -bx 50 -by 50 -k 0.666
+    picconfusion -i input.png -o output.png -d -t 0 -bx 50 -by 50 -k 0.666
 
 Note:
 1. For Block Confusion type (TYPE_BC), the block size (-bx, -by) must be greater than 0.
