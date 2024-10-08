@@ -4,19 +4,21 @@
 #include <fstream>
 #include <iomanip>
 
-const int OPERATE_ENCRYPT = 0;
-const int OPERATE_DECRYPT = 1;
+const int ENCRYPT = 0;
+const int DECRYPT = 1;
 
-const int TYPE_BC = 0;   // 方块混淆
-const int TYPE_PC = 1;   // 像素混淆
-const int TYPE_RPC = 2;  // 行像素混淆
-const int TYPE_PER = 3;  // PicEncrypt 行混淆
-const int TYPE_PERC = 4; // PicEncrypt 行+列混淆
+const int TYPE_MD5_B = 0;   // 方块混淆 
+const int TYPE_MD5_P = 1;   // 像素混淆
+const int TYPE_MD5_CP = 2;  // 行像素混淆
+const int TYPE_LG_R = 3;  // PicEncrypt 行混淆
+const int TYPE_LG_RC = 4; // PicEncrypt 行+列混淆
+const int TYPE_HBC = 5;  // 番茄混淆
 
 const std::string HELP_INFO=
 R"(
 PicConfusion Codec by Windust
-Usage: picconfusion [options]...
+
+Usage: PicConfusion [options]...
 
 Options:
   -h, --help            Display help information and exit
@@ -31,30 +33,17 @@ Options:
                         0: Block Confusion
                         1: Pixel Confusion
                         2: Row Pixel Confusion
-                        3: PicEncrypt Row Confusion
+                        3: PicEncrypt Row Confusion ()
                         4: PicEncrypt Row+Column Confusion
+                        5: Tomato Confusion (Hilbert Curve)
   -bx <size>, --blockX <size>
                         Set the block size in the X direction
   -by <size>, --blockY <size>
                         Set the block size in the Y direction
   -k <key>, --key <key>  Set the encryption/decryption key
-
-Examples:
-  Encrypt image:
-    picconfusion -i input.png -o output.png -e -t 0 -bx 50 -by 50 -k 0.666
-
-  Decrypt image:
-    picconfusion -i input.png -o output.png -d -t 0 -bx 50 -by 50 -k 0.666
-
-Note:
-1. For Block Confusion type (TYPE_BC), the block size (-bx, -by) must be greater than 0.
-2. For other types, the block size arguments will be ignored.
-3. The key (-k) is a string that may require a specific format depending on the encryption/decryption type.
-4. The input image (-i) must be a valid image file path.
-5. The output image (-o) can be any path where you want to save the encrypted/decrypted result.
 )";
 
-bool AppendBytesIfEndsWithAE42(const std::string& filename) {
+bool fixPNG(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         std::cerr << "Unable to open file: " << filename << std::endl;
@@ -104,42 +93,42 @@ bool AppendBytesIfEndsWithAE42(const std::string& filename) {
 
 cv::Mat run(const int &operation, const int &type, const cv::Mat &image,const std::string &key, int blockSizeX, int blockSizeY)
 {
-    if (operation == OPERATE_ENCRYPT)
+    if (operation == ENCRYPT)
     {
         switch (type)
         {
-        case TYPE_BC:
+        case TYPE_MD5_B:
             if (blockSizeX <= 0 || blockSizeY <= 0)
                 throw(std::invalid_argument("Blocksize should be greater than 0 !\n"));
-            return encryptBC(image, key, blockSizeX, blockSizeY);
-        case TYPE_PC:
-            return encryptPC(image, key);
-        case TYPE_RPC:
-            return encryptRPC(image, key);
-        case TYPE_PER:
-            return encryptPER(image, key);
-        case TYPE_PERC:
-            return encryptPERC(image, key);
+            return encryptMD5_B(image, key, blockSizeX, blockSizeY);
+        case TYPE_MD5_P:
+            return encryptMD5_P(image, key);
+        case TYPE_MD5_CP:
+            return encryptMD5_RP(image, key);
+        case TYPE_LG_R:
+            return encryptLG_R(image, key);
+        case TYPE_LG_RC:
+            return encryptLG_RC(image, key);
         default:
             throw(std::invalid_argument("Encrypt type doesn't exist !\n"));
         }
     }
-    if (operation == OPERATE_DECRYPT)
+    if (operation == DECRYPT)
     {
         switch (type)
         {
-        case TYPE_BC:
+        case TYPE_MD5_B:
             if (blockSizeX <= 0 || blockSizeY <= 0)
                 throw(std::invalid_argument("Blocksize should be greater than 0 !\n"));
-            return decryptBC(image, key, blockSizeX, blockSizeY);
-        case TYPE_PC:
-            return decryptPC(image, key);
-        case TYPE_RPC:
-            return decryptRPC(image, key);
-        case TYPE_PER:
-            return decryptPER(image, key);
-        case TYPE_PERC:
-            return decryptPERC(image, key);
+            return decryptMD5_B(image, key, blockSizeX, blockSizeY);
+        case TYPE_MD5_P:
+            return decryptMD5_P(image, key);
+        case TYPE_MD5_CP:
+            return decryptMD5_RP(image, key);
+        case TYPE_LG_R:
+            return decryptLG_R(image, key);
+        case TYPE_LG_RC:
+            return decryptLG_RC(image, key);
         default:
             throw(std::invalid_argument("Decrypt type doesn't exist !\n"));
         }
@@ -179,8 +168,8 @@ int main(int argc, char *argv[])
             i++;
             input_path=std::string(argv[i]);
         }
-        if(option=="-d" || option=="--decrypt") operation=OPERATE_DECRYPT; 
-        if(option=="-e" || option=="--encrypt") operation=OPERATE_ENCRYPT;
+        if(option=="-d" || option=="--decrypt") operation=DECRYPT; 
+        if(option=="-e" || option=="--encrypt") operation=ENCRYPT;
         if(option=="-t" || option=="--type")
         {
             i++;
@@ -202,7 +191,7 @@ int main(int argc, char *argv[])
             key=std::string(argv[i]);
         }
     }
-    if (AppendBytesIfEndsWithAE42(input_path)) {
+    if (fixPNG(input_path)) {
         std::cout << "File has been updated." << std::endl;
     } else {
         std::cout << "File does not end with AE 42, no update performed." << std::endl;

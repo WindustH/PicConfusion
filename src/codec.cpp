@@ -1,8 +1,6 @@
-#include "codec.hpp"
-#include <algorithm>
-#include <numeric>
-#define OPENSSL_SUPPRESS_DEPRECATED
-#include <openssl/md5.h>
+#include <codec.hpp>
+
+
 std::string md5(const std::string &input)
 {
     unsigned char digest[MD5_DIGEST_LENGTH];
@@ -26,24 +24,24 @@ std::string md5(const std::string &input)
     }
     return hexStream.str();
 }
-
+// logistic 数组排序
 bool logisticSort(const std::pair<double, int> &value1, const std::pair<double, int> &value2)
 {
     return value1.first < value2.first;
 }
-
+// 根据 md5 打乱数组
 std::vector<int> shuffleArray(int arrLength, std::string seed)
 {
-    std::vector<int> arr(arrLength); // 创建一个大小为arrLength的vector
+    std::vector<int> arr(arrLength);      // 创建一个大小为arrLength的vector
     std::iota(arr.begin(), arr.end(), 0); // 填充vector的元素为其索引值
     for (int i = arr.size() - 1; i > 0; i--)
     {
         int rand = std::stoi(md5(seed + std::to_string(i)).substr(0, 7), nullptr, 16) % (i + 1);
-        std::swap(arr[rand],arr[i]);
+        std::swap(arr[rand], arr[i]);
     }
     return arr;
 }
-
+// 根据 key 生成 logistic 映射
 std::vector<std::pair<double, int>> logisticMap(double key, int size)
 {
     std::vector<std::pair<double, int>> logisticArray;
@@ -66,94 +64,221 @@ std::vector<int> extractIndices(const std::vector<std::pair<double, int>> &pairs
     }
     return indices;
 }
-cv::Mat encryptBC(const cv::Mat &image, const std::string key, int blockSizeX, int blockSizeY)
+// 生成 hilbert 映射
+void hilbertMap(std::vector<std::pair<int, int>> &map, int width, int height)
+{
+    if (width >= height) {
+        hilbertIterator(0, 0, width, 0, 0, height, map);
+    } else {
+        hilbertIterator(0, 0, 0, height, width, 0, map);
+    }
+}
+//hilbert 迭代器
+void hilbertIterator(int currentX, int currentY, int deltaX1, int deltaY1, int deltaX2, int deltaY2, std::vector<std::pair<int, int>>& map)
+{
+    auto sign = [](int value)
+    {
+        if (value == 0)
+            return 0;
+        if (value < 0)
+            return -1;
+        return 1;
+    };
+    
+    int totalStepsX = std::abs(deltaX1 + deltaY1);
+    int totalStepsY = std::abs(deltaX2 + deltaY2);
+
+    int stepDirX1 = sign(deltaX1);
+    int stepDirY1 = sign(deltaY1);
+    int stepDirX2 = sign(deltaX2);
+    int stepDirY2 = sign(deltaY2);
+
+    if (totalStepsY == 1)
+    {
+        for (int step = 0; step < totalStepsX; step++)
+        {
+            map.push_back(std::pair<int, int>(currentX, currentY));
+            currentX += stepDirX1;
+            currentY += stepDirY1;
+        }
+        return;
+    }
+    if (totalStepsX == 1)
+    {
+        for (int step = 0; step < totalStepsY; step++)
+        {
+            map.push_back(std::pair<int, int>(currentX, currentY));
+            currentX += stepDirX2;
+            currentY += stepDirY2;
+        }
+        return;
+    }
+    
+    int halfDeltaX1 = deltaX1 / 2;
+    int halfDeltaY1 = deltaY1 / 2;
+    int halfDeltaX2 = deltaX2 / 2;
+    int halfDeltaY2 = deltaY2 / 2;
+
+    int halfStepsX = std::abs(halfDeltaX1 + halfDeltaY1);
+    int halfStepsY = std::abs(halfDeltaX2 + halfDeltaY2);
+
+    if (2 * totalStepsX > 3 * totalStepsY)
+    {
+        if ((halfStepsX % 2) && (totalStepsX > 2))
+        {
+            // prefer even steps
+            halfDeltaX1 += stepDirX1;
+            halfDeltaY1 += stepDirY1;
+        }
+        // long case: split in two parts only
+        hilbertIterator(currentX, currentY, halfDeltaX1, halfDeltaY1, deltaX2, deltaY2, map);
+        hilbertIterator(currentX + halfDeltaX1, currentY + halfDeltaY1, deltaX1 - halfDeltaX1, deltaY1 - halfDeltaY1, deltaX2, deltaY2, map);
+    }
+    else
+    {
+        if ((halfStepsY % 2) && (totalStepsY > 2))
+        {
+            // prefer even steps
+            halfDeltaX2 += stepDirX2;
+            halfDeltaY2 += stepDirY2;
+        }
+        // standard case: one step up, one long horizontal, one step down
+        hilbertIterator(currentX, currentY, halfDeltaX2, halfDeltaY2, halfDeltaX1, halfDeltaY1, map);
+        hilbertIterator(currentX + halfDeltaX2, currentY + halfDeltaY2, deltaX1, deltaY1, halfDeltaX2 - stepDirX2, halfDeltaY2 - stepDirY2, map);
+        hilbertIterator(currentX + (deltaX1 - stepDirX1) + (halfDeltaX2 - stepDirX2), currentY + (deltaY1 - stepDirY1) + (halfDeltaY2 - stepDirY2),
+            -halfDeltaX2, -halfDeltaY2, -(deltaX1 - halfDeltaX1), -(deltaY1 - halfDeltaY1), map);
+    }
+}
+//番茄混淆编码
+cv::Mat encryptHBC(const cv::Mat &image)
 {
     int width = image.cols;
     int height = image.rows;
-    int adjustedWidth = width;
-    int adjustedHeight = height;
-    cv::Mat outputImage;
-    cv::Mat resizedImage;
-    int x, y;
-    int scaledBlockWidth, scaledBlockHeight;
+    cv::Mat outputImage(image.size(), image.type());
 
-    // 调整大小
-    if (adjustedWidth % blockSizeX != 0)
-        adjustedWidth = adjustedWidth - adjustedWidth % blockSizeX + blockSizeX;
-    if (adjustedHeight % blockSizeY != 0)
-        adjustedHeight = adjustedHeight - adjustedHeight % blockSizeY + blockSizeY;
-    scaledBlockWidth = adjustedWidth / blockSizeX;
-    scaledBlockHeight = adjustedHeight / blockSizeY;
+    std::vector<std::pair<int, int>> hilbertArray;
+    hilbertMap(hilbertArray,width,height);
 
-    cv::resize(image, resizedImage, cv::Size_(adjustedWidth, adjustedHeight));
-    outputImage = cv::Mat(adjustedHeight, adjustedWidth, resizedImage.type(), cv::Scalar(0, 0, 0, 0));
+    int offset=std::round((std::sqrt(5)-1)/2*width*height);
 
-    std::vector<int> xMap=shuffleArray(blockSizeX, key);
-    std::vector<int> yMap=shuffleArray(blockSizeY, key);
-
-    for (int i = 0; i < adjustedWidth; i++)
+    for(int k=0;k<width*height;k++)
     {
-        for (int j = 0; j < adjustedHeight; j++)
+        int x = hilbertArray[k].first;
+        int y = hilbertArray[k].second;
+        int i=hilbertArray[(k + offset) % (width * height)].first;
+        int j=hilbertArray[(k + offset) % (width * height)].second;
+        outputImage.at<cv::Vec3b>(j, i) = image.at<cv::Vec3b>(y, x);
+    }
+    return outputImage;
+}
+//番茄混淆解码
+cv::Mat decryptHBC(const cv::Mat &image)
+{
+    int width = image.cols;
+    int height = image.rows;
+
+    cv::Mat outputImage(image.size(), image.type());
+
+    std::vector<std::pair<int, int>> hilbertArray;
+    hilbertMap(hilbertArray,width,height);
+
+    int offset=std::round((std::sqrt(5)-1)/2*width*height);
+
+    for(int k=0;k<width*height;k++)
+    {
+        int x = hilbertArray[k].first;
+        int y = hilbertArray[k].second;
+        int i=hilbertArray[(k + offset) % (width * height)].first;
+        int j=hilbertArray[(k + offset) % (width * height)].second;
+        outputImage.at<cv::Vec3b>(y, x) = image.at<cv::Vec3b>(j, i);
+    }
+    return outputImage;
+}
+// 方块混淆编码
+cv::Mat encryptMD5_B(const cv::Mat &image, const std::string key, int blockSizeX, int blockSizeY)
+{
+    int width = image.cols;
+    int height = image.rows;
+    cv::Mat outputImage(height, width, image.type());
+    
+
+    if (width % blockSizeX != 0)
+        width = width - width % blockSizeX + blockSizeX;
+    if (height % blockSizeY != 0)
+        height = height - height % blockSizeY + blockSizeY;
+
+    int blockWidth = width / blockSizeX;
+    int blockHeight = height / blockSizeY;
+
+    std::vector<int> xMap = shuffleArray(blockSizeX, key);
+    std::vector<int> yMap = shuffleArray(blockSizeY, key);
+
+    cv::Mat resizedImage;
+    cv::resize(image, resizedImage, cv::Size(width, height));
+
+    for (int i = 0; i < width; i++)
+    {
+        for (int j = 0; j < height; j++)
         {
-            x = i;
-            y = j;
-            x = (xMap[static_cast<int>(y / scaledBlockHeight)%blockSizeX] * scaledBlockWidth + x) % adjustedWidth;
-            x = xMap[static_cast<int>(x / scaledBlockWidth)] * scaledBlockWidth + x % scaledBlockWidth;
-            y = (yMap[static_cast<int>(x / scaledBlockWidth)%blockSizeY] * scaledBlockHeight + y) % adjustedHeight;
-            y = yMap[static_cast<int>(y / scaledBlockHeight)] * scaledBlockHeight + y % scaledBlockHeight;
+            int x = i;
+            int y = j;
+            x = (xMap[static_cast<int>(y / blockHeight) % blockSizeX] * blockWidth + x) % width;
+            x = xMap[static_cast<int>(x / blockWidth)] * blockWidth + x % blockWidth;
+            y = (yMap[static_cast<int>(x / blockWidth) % blockSizeY] * blockHeight + y) % height;
+            y = yMap[static_cast<int>(y / blockHeight)] * blockHeight + y % blockHeight;
 
             outputImage.at<cv::Vec3b>(j, i) = resizedImage.at<cv::Vec3b>(y, x);
         }
     }
     return outputImage;
 }
-cv::Mat decryptBC(const cv::Mat &image, const std::string key, int blockSizeX, int blockSizeY)
+// 方块混淆解码
+cv::Mat decryptMD5_B(const cv::Mat &image, const std::string key, int blockSizeX, int blockSizeY)
 {
     int width = image.cols;
     int height = image.rows;
-    int adjustedWidth = width;
-    int adjustedHeight = height;
+    cv::Mat outputImage(height, width, image.type());
 
-    // 调整宽度和高度以适应块大小
-    if (adjustedWidth % blockSizeX != 0)
-        adjustedWidth = adjustedWidth - adjustedWidth % blockSizeX + blockSizeX;
-    if (adjustedHeight % blockSizeY != 0)
-        adjustedHeight = adjustedHeight - adjustedHeight % blockSizeY + blockSizeY;
-    
+    if (width % blockSizeX != 0)
+        width = width - width % blockSizeX + blockSizeX;
+    if (height % blockSizeY != 0)
+        height = height - height % blockSizeY + blockSizeY;
+
+    int blockWidth = width / blockSizeX;
+    int blockHeight = height / blockSizeY;
+
     cv::Mat resizedImage;
-    cv::Mat outputImage = cv::Mat::zeros(adjustedHeight, adjustedWidth, image.type());
-    cv::resize(image, resizedImage, cv::Size_(adjustedWidth, adjustedHeight));
-    // 打乱x和y映射
-    std::vector<int> xMap=shuffleArray(blockSizeX, key);
-    std::vector<int> yMap=shuffleArray(blockSizeY, key);
-    int scaledBlockWidth = adjustedWidth / blockSizeX;
-    int scaledBlockHeight = adjustedHeight / blockSizeY;
-    // 解密图像
-    for (int i = 0; i < adjustedWidth; i++)
+    cv::resize(image, resizedImage, cv::Size(width, height));
+    
+    std::vector<int> xMap = shuffleArray(blockSizeX, key);
+    std::vector<int> yMap = shuffleArray(blockSizeY, key);
+    
+    for (int i = 0; i < width; i++)
     {
-        for (int j = 0; j < adjustedHeight; j++)
+        for (int j = 0; j < height; j++)
         {
             int x = i;
             int y = j;
-            x = (xMap[static_cast<int>(y / scaledBlockHeight)%blockSizeX] * scaledBlockWidth + x) % adjustedWidth;
-            x = xMap[static_cast<int>(x / scaledBlockWidth)] * scaledBlockWidth + x % scaledBlockWidth;
-            y = (yMap[static_cast<int>(x / scaledBlockWidth)%blockSizeY] * scaledBlockHeight + y) % adjustedHeight;
-            y = yMap[static_cast<int>(y / scaledBlockHeight)] * scaledBlockHeight + y % scaledBlockHeight;
+            x = (xMap[static_cast<int>(y / blockHeight) % blockSizeX] * blockWidth + x) % width;
+            x = xMap[static_cast<int>(x / blockWidth)] * blockWidth + x % blockWidth;
+            y = (yMap[static_cast<int>(x / blockWidth) % blockSizeY] * blockHeight + y) % height;
+            y = yMap[static_cast<int>(y / blockHeight)] * blockHeight + y % blockHeight;
             outputImage.at<cv::Vec3b>(y, x) = resizedImage.at<cv::Vec3b>(j, i);
         }
     }
 
     return outputImage;
 }
-cv::Mat encryptPC(const cv::Mat &image, const std::string &key)
+// 像素混淆编码
+cv::Mat encryptMD5_P(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
 
-    cv::Mat outputImage(height, width, image.type(), cv::Scalar(0, 0, 0, 0));
+    cv::Mat outputImage(image.size(), image.type());
 
-    std::vector<int> xMap=shuffleArray(width, key);
-    std::vector<int> yMap=shuffleArray(height, key);
+    std::vector<int> xMap = shuffleArray(width, key);
+    std::vector<int> yMap = shuffleArray(height, key);
 
     for (int i = 0; i < width; i++)
     {
@@ -171,16 +296,17 @@ cv::Mat encryptPC(const cv::Mat &image, const std::string &key)
 
     return outputImage;
 }
-cv::Mat decryptPC(const cv::Mat &image, const std::string &key)
+// 像素混淆解码
+cv::Mat decryptMD5_P(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
 
-    cv::Mat outputImage = cv::Mat::zeros(height, width, image.type());
+    cv::Mat outputImage(image.size(), image.type());
 
     // 打乱映射数组
-    std::vector<int> xMap=shuffleArray(width, key);
-    std::vector<int> yMap=shuffleArray(height, key);
+    std::vector<int> xMap = shuffleArray(width, key);
+    std::vector<int> yMap = shuffleArray(height, key);
 
     for (int i = 0; i < width; i++)
     {
@@ -198,16 +324,15 @@ cv::Mat decryptPC(const cv::Mat &image, const std::string &key)
     }
     return outputImage;
 }
-cv::Mat encryptRPC(const cv::Mat &image, const std::string &key)
+// 行像素混淆编码
+cv::Mat encryptMD5_RP(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
-    cv::Mat outputImage(width, height, image.type(), cv::Scalar(0, 0, 0, 0));
+    cv::Mat outputImage(image.size(), image.type());
 
-    std::vector<int> xMap=shuffleArray(width, key);
-    std::vector<int> yMap=shuffleArray(height, key);
-
-    outputImage = cv::Mat(height, width, image.type(), cv::Scalar(0, 0, 0, 0));
+    std::vector<int> xMap = shuffleArray(width, key);
+    std::vector<int> yMap = shuffleArray(height, key);
 
     for (int i = 0; i < width; i++)
     {
@@ -223,15 +348,15 @@ cv::Mat encryptRPC(const cv::Mat &image, const std::string &key)
 
     return outputImage;
 }
-cv::Mat decryptRPC(const cv::Mat &image, const std::string &key)
+// 行像素混淆解码
+cv::Mat decryptMD5_RP(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
+    cv::Mat outputImage(image.size(), image.type());
 
-    cv::Mat outputImage = cv::Mat::zeros(height, width, image.type());
-
-    std::vector<int> xMap=shuffleArray(width, key);
-    std::vector<int> yMap=shuffleArray(height, key);
+    std::vector<int> xMap = shuffleArray(width, key);
+    std::vector<int> yMap = shuffleArray(height, key);
 
     for (int i = 0; i < width; i++)
     {
@@ -246,24 +371,17 @@ cv::Mat decryptRPC(const cv::Mat &image, const std::string &key)
     }
     return outputImage;
 }
-cv::Mat encryptPER(const cv::Mat &image, const std::string &key)
+// PicEncrypt 行混淆编码
+cv::Mat encryptLG_R(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
 
-    cv::Mat resizedImage;
-    cv::resize(image, resizedImage, cv::Size(width, height));
-
-    cv::Mat outputImage = cv::Mat::zeros(height, width, image.type());
+    cv::Mat outputImage(image.size(), image.type());
 
     std::vector<int> rowMap(width);
-
-    // 生成 logistic 映射数组
     std::vector<std::pair<double, int>> logisticArray = logisticMap(std::stod(key), width);
-    // 排序
     std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-    // 提取索引
     rowMap = extractIndices(logisticArray);
 
     for (int i = 0; i < width; i++)
@@ -272,30 +390,24 @@ cv::Mat encryptPER(const cv::Mat &image, const std::string &key)
         {
             int x = rowMap[i];
             int y = j;
-            outputImage.at<cv::Vec3b>(j, i) = resizedImage.at<cv::Vec3b>(y, x);
+            outputImage.at<cv::Vec3b>(j, i) = image.at<cv::Vec3b>(y, x);
         }
     }
 
     return outputImage;
 }
-cv::Mat decryptPER(const cv::Mat &image, const std::string &key)
+//PicEncrypt 行混淆解码
+cv::Mat decryptLG_R(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
-
-    cv::Mat outputImage = cv::Mat::zeros(height, width, image.type());
+    cv::Mat outputImage(image.size(), image.type());
 
     std::vector<int> rowMap(width);
-    // Logistic映射和打乱
-    // 生成 logistic 映射数组
     std::vector<std::pair<double, int>> logisticArray = logisticMap(std::stod(key), width);
-    // 排序
     std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-    // 提取索引
     rowMap = extractIndices(logisticArray);
 
-    // 解密图像
     for (int i = 0; i < width; i++)
     {
         for (int j = 0; j < height; j++)
@@ -308,101 +420,89 @@ cv::Mat decryptPER(const cv::Mat &image, const std::string &key)
 
     return outputImage;
 }
-cv::Mat encryptPERC(const cv::Mat &image, const std::string &key)
+//PicEncrypt 行+列混淆编码
+cv::Mat encryptLG_RC(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
-    cv::Mat tempImageData(height, width, image.type(), cv::Scalar(0, 0, 0, 0));
-    cv::Mat finalImageData(height, width, image.type(), cv::Scalar(0, 0, 0, 0));
-    std::vector<int> columnMap, rowMap;
-    
+    cv::Mat tempImage(image.size(), image.type());
+    cv::Mat outputImage(image.size(), image.type());
+
     double currentValue = std::stod(key);
 
     for (int j = 0; j < height; j++)
     {
 
-        // 生成 logistic 映射数组
         std::vector<std::pair<double, int>> logisticArray = logisticMap(currentValue, width);
         currentValue = logisticArray[width - 1].first;
-        // 排序
         std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-        // 提取索引
         std::vector<int> columnMap = extractIndices(logisticArray);
+
         for (int i = 0; i < width; i++)
         {
             int x = columnMap[i];
             int y = j;
-            tempImageData.at<cv::Vec3b>(j, i) = image.at<cv::Vec3b>(y, x);
+            tempImage.at<cv::Vec3b>(j, i) = image.at<cv::Vec3b>(y, x);
         }
     }
     currentValue = std::stod(key);
     for (int i = 0; i < width; i++)
     {
-        // 生成 logistic 映射数组
         std::vector<std::pair<double, int>> logisticArray = logisticMap(currentValue, height);
         currentValue = logisticArray[height - 1].first;
-        // 排序
         std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-        // 提取索引
         std::vector<int> rowMap = extractIndices(logisticArray);
+
         for (int j = 0; j < height; j++)
         {
             int y = rowMap[j];
             int x = i;
-            finalImageData.at<cv::Vec3b>(j, i) = tempImageData.at<cv::Vec3b>(y, x);
+            outputImage.at<cv::Vec3b>(j, i) = tempImage.at<cv::Vec3b>(y, x);
         }
     }
-    return finalImageData;
+    return outputImage;
 }
-cv::Mat decryptPERC(const cv::Mat &image, const std::string &key)
+//PicEncrypt 行+列混淆解码
+cv::Mat decryptLG_RC(const cv::Mat &image, const std::string &key)
 {
     int width = image.cols;
     int height = image.rows;
-    cv::Mat tempImageData = cv::Mat::zeros(image.size(), image.type());
-    cv::Mat finalImageData = cv::Mat::zeros(image.size(), image.type());
+    cv::Mat tempImage(image.size(), image.type());
+    cv::Mat outputImage(image.size(), image.type());
 
     double currentValue = stod(key);
-    std::vector<int> rowMap, columnMap;
 
-    // 行混淆
     for (int i = 0; i < width; i++)
     {
         std::vector<std::pair<double, int>> logisticArray = logisticMap(currentValue, height);
         currentValue = logisticArray[height - 1].first;
-        // 排序
         std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-        // 提取索引
         std::vector<int> rowMap = extractIndices(logisticArray);
+
         for (int j = 0; j < height; j++)
         {
             int y = rowMap[j];
             int x = i;
-            tempImageData.at<cv::Vec3b>(y, x) = image.at<cv::Vec3b>(j, i);
+            tempImage.at<cv::Vec3b>(y, x) = image.at<cv::Vec3b>(j, i);
         }
     }
 
-    // 列混淆
     currentValue = stod(key);
     for (int j = 0; j < height; j++)
     {
         std::vector<std::pair<double, int>> logisticArray = logisticMap(currentValue, width);
         currentValue = logisticArray[width - 1].first;
-        // 排序
         std::sort(logisticArray.begin(), logisticArray.end(), logisticSort);
-
-        // 提取索引
         std::vector<int> columnMap = extractIndices(logisticArray);
+
         for (int i = 0; i < width; i++)
         {
             int x = columnMap[i];
             int y = j;
             for (int c = 0; c < 3; c++)
-                finalImageData.at<cv::Vec3b>(y, x) = tempImageData.at<cv::Vec3b>(j, i);
+                outputImage.at<cv::Vec3b>(y, x) = tempImage.at<cv::Vec3b>(j, i);
         }
     }
 
-    return finalImageData;
+    return outputImage;
 }
