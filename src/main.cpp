@@ -1,51 +1,13 @@
-#include <codec.hpp>
-#include <iostream>
-#include <stdexcept>
-#include <fstream>
+#include "codec.cpp"
+#include "options.cpp"
 #include <iomanip>
+#include <fstream>
 
-const int ENCRYPT = 0;
-const int DECRYPT = 1;
-
-const int TYPE_MD5_B = 0;   // 方块混淆 
-const int TYPE_MD5_P = 1;   // 像素混淆
-const int TYPE_MD5_CP = 2;  // 行像素混淆
-const int TYPE_LG_R = 3;  // PicEncrypt 行混淆
-const int TYPE_LG_RC = 4; // PicEncrypt 行+列混淆
-const int TYPE_HBC = 5;  // 番茄混淆
-
-const std::string HELP_INFO=
-R"(
-PicConfusion Codec by Windust
-
-Usage: PicConfusion [options]...
-
-Options:
-  -h, --help            Display help information and exit
-  -i <path>, --input <path>
-                        Set the input image path
-  -o <path>, --output <path>
-                        Set the output image path
-  -e, --encrypt          Encrypt operation
-  -d, --decrypt          Decrypt operation
-  -t <type>, --type <type>
-                        Set the encryption/decryption type
-                        0: Block Confusion
-                        1: Pixel Confusion
-                        2: Row Pixel Confusion
-                        3: PicEncrypt Row Confusion ()
-                        4: PicEncrypt Row+Column Confusion
-                        5: Tomato Confusion (Hilbert Curve)
-  -bx <size>, --blockX <size>
-                        Set the block size in the X direction
-  -by <size>, --blockY <size>
-                        Set the block size in the Y direction
-  -k <key>, --key <key>  Set the encryption/decryption key
-)";
-
-bool fixPNG(const std::string& filename) {
+bool fixPNG(const std::string &filename)
+{
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
+    if (!file.is_open())
+    {
         std::cerr << "Unable to open file: " << filename << std::endl;
         return false;
     }
@@ -57,7 +19,8 @@ bool fixPNG(const std::string& filename) {
     file.seekg(-2, std::ios::end);
 
     // Check if the file has at least 2 bytes
-    if (fileSize < 2) {
+    if (fileSize < 2)
+    {
         std::cerr << "File is too small to have 2 bytes at the end." << std::endl;
         file.close();
         return false;
@@ -65,19 +28,21 @@ bool fixPNG(const std::string& filename) {
 
     // Read the last two bytes
     unsigned char lastTwoBytes[2] = {0, 0};
-    file.read(reinterpret_cast<char*>(lastTwoBytes), 2);
+    file.read(reinterpret_cast<char *>(lastTwoBytes), 2);
     file.close();
 
     // Output the last two bytes in hexadecimal format
-    std::cout << "Last two bytes in hexadecimal: 0x" 
-              << std::hex << std::uppercase << (int)lastTwoBytes[0] 
-              << " 0x" << std::hex << std::uppercase << (int)lastTwoBytes[1] 
+    std::cout << "Last two bytes in hexadecimal: 0x"
+              << std::hex << std::uppercase << (int)lastTwoBytes[0]
+              << " 0x" << std::hex << std::uppercase << (int)lastTwoBytes[1]
               << std::endl;
 
     // Check if they are AE 42
-    if (lastTwoBytes[0] == 0xAE && lastTwoBytes[1] == 0x42) {
+    if (lastTwoBytes[0] == 0xAE && lastTwoBytes[1] == 0x42)
+    {
         std::ofstream outFile(filename, std::ios::binary | std::ios::app);
-        if (!outFile.is_open()) {
+        if (!outFile.is_open())
+        {
             std::cerr << "Unable to open file to append: " << filename << std::endl;
             return false;
         }
@@ -91,114 +56,64 @@ bool fixPNG(const std::string& filename) {
     return false;
 }
 
-cv::Mat run(const int &operation, const int &type, const cv::Mat &image,const std::string &key, int blockSizeX, int blockSizeY)
+bool run(Options opts)
 {
-    if (operation == ENCRYPT)
+    if (fixPNG(opts.input.data))
     {
-        switch (type)
+        std::cout << "File has been updated." << std::endl;
+    }
+    else
+    {
+        std::cout << "File does not end with AE 42, no update performed." << std::endl;
+    }
+    cv::Mat input_image = cv::imread(opts.input.data, cv::IMREAD_COLOR);
+    cv::Mat output_image;
+
+    if (opts.operation.data == ENCRYPT)
+    {
+        switch (opts.type.data)
         {
         case TYPE_MD5_B:
-            if (blockSizeX <= 0 || blockSizeY <= 0)
-                throw(std::invalid_argument("Blocksize should be greater than 0 !\n"));
-            return encryptMD5_B(image, key, blockSizeX, blockSizeY);
+            output_image = MD5_B_enc(input_image, opts.key.data, opts.blockSizeX.data, opts.blockSizeY.data);break;
         case TYPE_MD5_P:
-            return encryptMD5_P(image, key);
+            output_image = MD5_P_enc(input_image, opts.key.data);break;
         case TYPE_MD5_CP:
-            return encryptMD5_RP(image, key);
+            output_image = MD5_RP_enc(input_image, opts.key.data);break;
         case TYPE_LG_R:
-            return encryptLG_R(image, key);
+            output_image = LG_R_enc(input_image, opts.key.data);break;
         case TYPE_LG_RC:
-            return encryptLG_RC(image, key);
-        default:
-            throw(std::invalid_argument("Encrypt type doesn't exist !\n"));
+            output_image = LG_RC_enc(input_image, opts.key.data);break;
+        case TYPE_HBC:
+            output_image = HBC_enc(input_image);break;
         }
     }
-    if (operation == DECRYPT)
+    else if (opts.operation.data == DECRYPT)
     {
-        switch (type)
+        switch (opts.type.data)
         {
         case TYPE_MD5_B:
-            if (blockSizeX <= 0 || blockSizeY <= 0)
-                throw(std::invalid_argument("Blocksize should be greater than 0 !\n"));
-            return decryptMD5_B(image, key, blockSizeX, blockSizeY);
+            output_image = MD5_B_dec(input_image, opts.key.data, opts.blockSizeX.data, opts.blockSizeY.data);break;
         case TYPE_MD5_P:
-            return decryptMD5_P(image, key);
+            output_image = MD5_P_dec(input_image, opts.key.data);break;
         case TYPE_MD5_CP:
-            return decryptMD5_RP(image, key);
+            output_image = MD5_RP_dec(input_image, opts.key.data);break;
         case TYPE_LG_R:
-            return decryptLG_R(image, key);
+            output_image = LG_R_dec(input_image, opts.key.data);break;
         case TYPE_LG_RC:
-            return decryptLG_RC(image, key);
-        default:
-            throw(std::invalid_argument("Decrypt type doesn't exist !\n"));
+            output_image = LG_RC_dec(input_image, opts.key.data);break;
+        case TYPE_HBC:
+            output_image = HBC_dec(input_image);break;
         }
     }
-    throw(std::invalid_argument("Operation doesn't exist !\n"));
+
+    int compression_level = 9;
+    bool result = cv::imwrite(opts.output.data, output_image, std::vector<int>{cv::IMWRITE_PNG_COMPRESSION, compression_level});
+    return result;
 }
 
 int main(int argc, char *argv[])
 {
-    std::string input_path ;
-    std::string output_path ;
-    int operation=0;
-    int type=0;
-    std::string key="0.666";
-    int blockSizeX=50;
-    int blockSizeY=50;
-    if (argc<=1)
-    {
-        std::cout<<HELP_INFO;
-        return 0;
-    }
-    for(int i=1;i<argc;i++)
-    {
-        std::string option(argv[i]);
-        if(option=="-h" || option=="--help")
-        {
-            std::cout<<HELP_INFO;
-            return 0;
-        }
-        if(option=="-o" || option=="--output")
-        {
-            i++;
-            output_path=std::string(argv[i]);
-        }
-        if(option=="-i" || option=="--input")
-        {
-            i++;
-            input_path=std::string(argv[i]);
-        }
-        if(option=="-d" || option=="--decrypt") operation=DECRYPT; 
-        if(option=="-e" || option=="--encrypt") operation=ENCRYPT;
-        if(option=="-t" || option=="--type")
-        {
-            i++;
-            type=std::stoi(argv[i]);
-        }
-        if(option=="-bx" || option=="--blockSizeX")
-        {
-            i++;
-            blockSizeX=std::stoi(argv[i]);
-        }
-        if(option=="-by" || option=="--blockSizeY")
-        {
-            i++;
-            blockSizeY=std::stoi(argv[i]);
-        }
-        if(option=="-k" || option=="--key")
-        {
-            i++;
-            key=std::string(argv[i]);
-        }
-    }
-    if (fixPNG(input_path)) {
-        std::cout << "File has been updated." << std::endl;
-    } else {
-        std::cout << "File does not end with AE 42, no update performed." << std::endl;
-    }
-    cv::Mat input_image=cv::imread(input_path, cv::IMREAD_COLOR);
-    cv::Mat output_image=run(operation,type,input_image,key,blockSizeX,blockSizeY);
-    int compression_level = 9;  // 设置压缩级别
-    bool result = cv::imwrite(output_path, output_image, std::vector<int>{cv::IMWRITE_PNG_COMPRESSION, compression_level});
+    Options opts(argc, argv);
+    run(opts);
     return 0;
 }

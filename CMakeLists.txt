@@ -9,10 +9,8 @@ set(OpenCV_DIR "H:/Environment/opencv/sources/build")
 # set(FREEIMAGE_INCLUDE_DIR "${FREEIMAGE_ROOT}/Source")
 # set(FREEIMAGE_LIBRARY_DIR "${FREEIMAGE_ROOT}/Dist/x64")
 
-add_executable(${PROJECT_NAME}
-    src/main.cpp 
-    src/codec.cpp
-)
+file(GLOB_RECURSE SOURCES "src/*.cpp")
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 find_package(OpenCV REQUIRED)
 find_package(OpenSSL REQUIRED)
