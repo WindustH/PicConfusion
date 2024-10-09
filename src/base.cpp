@@ -65,11 +65,23 @@ std::vector<int> extractIndices(const std::vector<std::pair<double, int>> &pairs
     return indices;
 }
 
-// 生成 hilbert 映射
+//获取值的符号
+int sign(int value)
+{
+    if (value == 0)
+        return 0;
+    if (value < 0)
+        return -1;
+    return 1;
+};
+
 void hilbertMap(std::vector<std::pair<int, int>> &map, int width, int height)
 {
+    map.clear();  // 清空vector
+    
     if (width >= height)
     {
+        // 直接传递目标坐标，而不是差值
         hilbertIterator(0, 0, width, 0, 0, height, map);
     }
     else
@@ -77,79 +89,72 @@ void hilbertMap(std::vector<std::pair<int, int>> &map, int width, int height)
         hilbertIterator(0, 0, 0, height, width, 0, map);
     }
 }
-// hilbert 迭代器
-void hilbertIterator(int currentX, int currentY, int deltaX1, int deltaY1, int deltaX2, int deltaY2, std::vector<std::pair<int, int>> &map)
+
+// 修改后的hilbertIterator
+void hilbertIterator(int x, int y, int ax, int ay, int bx, int by, std::vector<std::pair<int, int>> &map)
 {
-    auto sign = [](int value)
+    int w = std::abs(ax + ay);  // 总宽度
+    int h = std::abs(bx + by);  // 总高度
+
+    int dax = sign(ax);  // 主方向单位向量
+    int day = sign(ay);
+    int dbx = sign(bx);  // 正交方向单位向量
+    int dby = sign(by);
+
+    if (h == 1)
     {
-        if (value == 0)
-            return 0;
-        if (value < 0)
-            return -1;
-        return 1;
-    };
-
-    int totalStepsX = std::abs(deltaX1 + deltaY1);
-    int totalStepsY = std::abs(deltaX2 + deltaY2);
-
-    int stepDirX1 = sign(deltaX1);
-    int stepDirY1 = sign(deltaY1);
-    int stepDirX2 = sign(deltaX2);
-    int stepDirY2 = sign(deltaY2);
-
-    if (totalStepsY == 1)
-    {
-        for (int step = 0; step < totalStepsX; step++)
+        // 简单行填充
+        for (int i = 0; i < w; i++)
         {
-            map.push_back(std::pair<int, int>(currentX, currentY));
-            currentX += stepDirX1;
-            currentY += stepDirY1;
-        }
-        return;
-    }
-    if (totalStepsX == 1)
-    {
-        for (int step = 0; step < totalStepsY; step++)
-        {
-            map.push_back(std::pair<int, int>(currentX, currentY));
-            currentX += stepDirX2;
-            currentY += stepDirY2;
+            map.push_back({x, y});
+            x += dax;
+            y += day;
         }
         return;
     }
 
-    int halfDeltaX1 = deltaX1 / 2;
-    int halfDeltaY1 = deltaY1 / 2;
-    int halfDeltaX2 = deltaX2 / 2;
-    int halfDeltaY2 = deltaY2 / 2;
-
-    int halfStepsX = std::abs(halfDeltaX1 + halfDeltaY1);
-    int halfStepsY = std::abs(halfDeltaX2 + halfDeltaY2);
-
-    if (2 * totalStepsX > 3 * totalStepsY)
+    if (w == 1)
     {
-        if ((halfStepsX % 2) && (totalStepsX > 2))
+        // 简单列填充
+        for (int i = 0; i < h; i++)
         {
-            // prefer even steps
-            halfDeltaX1 += stepDirX1;
-            halfDeltaY1 += stepDirY1;
+            map.push_back({x, y});
+            x += dbx;
+            y += dby;
         }
-        // long case: split in two parts only
-        hilbertIterator(currentX, currentY, halfDeltaX1, halfDeltaY1, deltaX2, deltaY2, map);
-        hilbertIterator(currentX + halfDeltaX1, currentY + halfDeltaY1, deltaX1 - halfDeltaX1, deltaY1 - halfDeltaY1, deltaX2, deltaY2, map);
+        return;
+    }
+
+    int ax2 = ax / 2;
+    int ay2 = ay / 2;
+    int bx2 = bx / 2;
+    int by2 = by / 2;
+
+    int w2 = std::abs(ax2 + ay2);
+    int h2 = std::abs(bx2 + by2);
+
+    if (2 * w > 3 * h)
+    {
+        if ((w2 % 2) && (w > 2))
+        {
+            ax2 += dax;
+            ay2 += day;
+        }
+        hilbertIterator(x, y, ax2, ay2, bx, by, map);
+        hilbertIterator(x + ax2, y + ay2, ax - ax2, ay - ay2, bx, by, map);
     }
     else
     {
-        if ((halfStepsY % 2) && (totalStepsY > 2))
+        if ((h2 % 2) && (h > 2))
         {
-            // prefer even steps
-            halfDeltaX2 += stepDirX2;
-            halfDeltaY2 += stepDirY2;
+            bx2 += dbx;
+            by2 += dby;
         }
-        // standard case: one step up, one long horizontal, one step down
-        hilbertIterator(currentX, currentY, halfDeltaX2, halfDeltaY2, halfDeltaX1, halfDeltaY1, map);
-        hilbertIterator(currentX + halfDeltaX2, currentY + halfDeltaY2, deltaX1, deltaY1, halfDeltaX2 - stepDirX2, halfDeltaY2 - stepDirY2, map);
-        hilbertIterator(currentX + (deltaX1 - stepDirX1) + (halfDeltaX2 - stepDirX2), currentY + (deltaY1 - stepDirY1) + (halfDeltaY2 - stepDirY2),
-                        -halfDeltaX2, -halfDeltaY2, -(deltaX1 - halfDeltaX1), -(deltaY1 - halfDeltaY1), map);
+        hilbertIterator(x, y, bx2, by2, ax2, ay2, map);
+        hilbertIterator(x + bx2, y + by2, ax, ay, bx - bx2, by - by2, map);
+        hilbertIterator(x + (ax - dax) + (bx2 - dbx), 
+                       y + (ay - day) + (by2 - dby),
+                       -bx2, -by2, 
+                       -(ax - ax2), -(ay - ay2), map);
     }
 }

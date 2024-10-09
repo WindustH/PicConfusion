@@ -1,5 +1,5 @@
 #include "codec.hpp"
-
+#include "base.hpp"
 // 番茄混淆编码
 cv::Mat HBC_enc(const cv::Mat &image)
 {
@@ -9,7 +9,6 @@ cv::Mat HBC_enc(const cv::Mat &image)
 
     std::vector<std::pair<int, int>> hilbertArray;
     hilbertMap(hilbertArray, width, height);
-
     int offset = std::round((std::sqrt(5) - 1) / 2 * width * height);
 
     for (int k = 0; k < width * height; k++)

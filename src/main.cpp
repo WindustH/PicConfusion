@@ -1,5 +1,5 @@
-#include "codec.cpp"
-#include "options.cpp"
+#include "codec.hpp"
+#include "options.hpp"
 #include <iomanip>
 #include <fstream>
 
@@ -58,6 +58,10 @@ bool fixPNG(const std::string &filename)
 
 bool run(Options opts)
 {
+    if (opts.help.data) {
+        std::cout<<HELP_INFO;
+        return true;
+    }
     if (fixPNG(opts.input.data))
     {
         std::cout << "File has been updated." << std::endl;

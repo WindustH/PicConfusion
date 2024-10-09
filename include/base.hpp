@@ -1,5 +1,6 @@
 #ifndef BASE_HPP
 #define BASE_HPP
+#define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <opencv2/opencv.hpp>
 #include <vector>

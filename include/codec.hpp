@@ -2,7 +2,6 @@
 #define CODEC_HPP
 
 #include <opencv2/opencv.hpp>
-#include "base.hpp"
 
 cv::Mat HBC_enc(const cv::Mat &image);
 cv::Mat HBC_dec(const cv::Mat &image);
